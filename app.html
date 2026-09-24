@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlateLine - planner</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1420; color:#e8ecf4; min-height:100vh; }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 20px 80px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+  header h1 { font-size:22px; } header h1 span { color:#f2a154; }
+  header a { color:#8b96ac; text-decoration:none; font-size:14px; }
+  .card { background:#171e2e; border:1px solid #263048; border-radius:12px; padding:18px; margin-bottom:18px; }
+  label { font-size:12px; color:#8b96ac; display:block; margin-bottom:4px; }
+  input, select { background:#0f1420; border:1px solid #2c3a58; border-radius:8px; color:#e8ecf4; padding:9px 10px; font-size:14px; width:100%; }
+  .row { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:10px; align-items:end; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end; margin-bottom:14px; }
+  button { background:#f2a154; border:none; color:#18110a; font-weight:700; padding:11px 20px; border-radius:9px; font-size:14px; cursor:pointer; }
+  button.ghost { background:#232c42; color:#c6cfdf; }
+  button:hover { filter:brightness(1.1); }
+  .dish { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid #232c42; font-size:14px; }
+  .dish:last-child { border-bottom:none; }
+  .dish .rm { color:#e06060; cursor:pointer; font-size:16px; padding:2px 8px; }
+  .meta { color:#8b96ac; font-size:12px; }
+  .warn { background:#3a2413; border:1px solid #8a5a22; color:#ffc987; padding:12px 14px; border-radius:10px; margin-bottom:14px; font-size:14px; line-height:1.5; }
+  .tl { list-style:none; }
+  .tl li { display:flex; gap:14px; padding:10px 0; border-bottom:1px solid #232c42; font-size:15px; align-items:baseline; }
+  .tl .tm { color:#f2a154; font-variant-numeric:tabular-nums; font-weight:700; min-width:56px; }
+  .tl .serve { color:#7ee2a0; font-weight:700; }
+  .err { color:#ff8a8a; font-size:13px; margin-top:8px; }
+  .stats { display:flex; gap:22px; flex-wrap:wrap; margin-bottom:14px; }
+  .stat b { font-size:22px; color:#fff; display:block; }
+  .stat span { font-size:12px; color:#8b96ac; }
+  h3 { font-size:15px; margin-bottom:12px; color:#c6cfdf; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Plate<span>Line</span></h1><a href="index.html">home</a></header>
+
+  <div class="card">
+    <div class="row2">
+      <div><label>Serve time</label><input id="serve" type="time" value="19:30"></div>
+      <div><label>&nbsp;</label><button class="ghost" id="demo" style="width:100%">Load demo dinner</button></div>
+    </div>
+    <h3>Add a dish</h3>
+    <div class="row">
+      <div><label>Name</label><input id="dname" placeholder="Roast chicken"></div>
+      <div><label>Prep (min)</label><input id="dprep" type="number" min="0" value="15"></div>
+      <div><label>Cook (min)</label><input id="dcook" type="number" min="0" value="60"></div>
+      <div><label>Rest (min)</label><input id="drest" type="number" min="0" value="0"></div>
+      <div><label>Oven C (opt)</label><input id="dtemp" type="number" min="0" placeholder="-"></div>
+    </div>
+    <div style="margin-top:12px"><button id="add">Add dish</button></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card" id="listcard" style="display:none">
+    <h3>Menu</h3>
+    <div id="dishlist"></div>
+    <div style="margin-top:12px"><button id="plan">Build the plan</button></div>
+  </div>
+
+  <div id="out"></div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let dishes = [];
+  try { dishes = JSON.parse(localStorage.getItem('plateline-dishes') || '[]'); } catch(e) { dishes = []; }
+
+  function save(){ localStorage.setItem('plateline-dishes', JSON.stringify(dishes)); }
+
+  function renderList(){
+    const c = $('listcard');
+    c.style.display = dishes.length ? 'block' : 'none';
+    $('dishlist').innerHTML = dishes.map((d,i) =>
+      '<div class="dish"><div><b>'+esc(d.name)+'</b> <span class="meta">prep '+d.prepMin+'m - cook '+d.cookMin+'m'+(d.restMin?' - rest '+d.restMin+'m':'')+(d.ovenTempC!==null?' - '+d.ovenTempC+' C':'')+'</span></div><span class="rm" data-i="'+i+'">x</span></div>'
+    ).join('');
+    document.querySelectorAll('.rm').forEach(el => el.onclick = () => { dishes.splice(+el.dataset.i,1); save(); renderList(); });
+  }
+  function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  $('add').onclick = () => {
+    $('err').textContent = '';
+    try {
+      const d = PlateEngine.normDish({ name:$('dname').value, prepMin:$('dprep').value, cookMin:$('dcook').value, restMin:$('drest').value, ovenTempC:$('dtemp').value });
+      dishes.push(d); save(); renderList();
+      $('dname').value=''; $('dtemp').value='';
+    } catch(e) { $('err').textContent = e.message; }
+  };
+
+  $('demo').onclick = () => {
+    dishes = [
+      PlateEngine.normDish({name:'Roast chicken', prepMin:20, cookMin:85, restMin:15, ovenTempC:200}),
+      PlateEngine.normDish({name:'Roast potatoes', prepMin:15, cookMin:55, restMin:0, ovenTempC:220}),
+      PlateEngine.normDish({name:'Green beans', prepMin:8, cookMin:6, restMin:0}),
+      PlateEngine.normDish({name:'Gravy', prepMin:2, cookMin:8, restMin:0})
+    ];
+    save(); renderList();
+  };
+
+  $('plan').onclick = () => {
+    const out = $('out');
+    if (!dishes.length) { out.innerHTML=''; return; }
+    let serve;
+    try { serve = PlateEngine.parseTime($('serve').value); } catch(e) { out.innerHTML = '<div class="warn">Set a valid serve time first.</div>'; return; }
+    const tl = PlateEngine.buildTimeline(dishes, serve);
+    const st = PlateEngine.stats(dishes, serve);
+    const conf = PlateEngine.ovenConflicts(dishes, serve);
+    let html = '';
+    if (conf.length) {
+      html += '<div class="warn"><b>Oven clash:</b> ' + conf.map(c =>
+        esc(c.a)+' ('+c.tempA+' C) and '+esc(c.b)+' ('+c.tempB+' C) need the oven together for '+c.overlapMin+' min. Stagger one dish by at least '+c.suggestGapMin+' min or cook them back to back.'
+      ).join('<br>') + '</div>';
+    }
+    html += '<div class="card"><div class="stats">'
+      + '<div class="stat"><b>'+st.firstStart+'</b><span>first pan on</span></div>'
+      + '<div class="stat"><b>'+Math.floor(st.spanMin/60)+'h '+String(st.spanMin%60).padStart(2,'0')+'m</b><span>total span</span></div>'
+      + '<div class="stat"><b>'+st.activeMin+' min</b><span>hands-on</span></div>'
+      + '<div class="stat"><b>'+st.dishCount+'</b><span>dishes</span></div></div>'
+      + '<ul class="tl">' + tl.map(e =>
+        '<li><span class="tm'+(e.kind==='serve'?' serve':'')+'">'+e.time+'</span><span'+(e.kind==='serve'?' class="serve"':'')+'>'+esc(e.label)+'</span></li>'
+      ).join('') + '</ul></div>';
+    out.innerHTML = html;
+  };
+
+  renderList();
+})();
+</script>
+</body>
+</html>
